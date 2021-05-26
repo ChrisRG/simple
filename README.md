@@ -2,6 +2,13 @@
 
 To test the language, we can use the main Ruby REPL, IRB.
 
+We can either initialize IRB while loading the file directly:
+```
+irb -r ./expression.rb
+```
+
+Otherwise we can load files within IRB:
+
 ```
 $ irb
 >> load './expression.rb'
