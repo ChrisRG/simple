@@ -1,3 +1,4 @@
+## SIMPLE Language
 ## Statements:
 #   DoNothing
 #   Assign
@@ -137,6 +138,7 @@ class Sequence < Struct.new(:first, :second)
 end
 
 class While < Struct.new(:condition, :body)
+  # Representing in a human-readable way
   def to_s
     "while (#{condition}) { #{body} }"
   end
@@ -145,6 +147,7 @@ class While < Struct.new(:condition, :body)
     "#{self}"
   end
 
+  # Iterative, small-step approach
   def reducible?
     true
   end
@@ -153,15 +156,17 @@ class While < Struct.new(:condition, :body)
     [If.new(condition, Sequence.new(body, self), DoNothing.new), environment]
   end
 
+  # Recursive, big-step approach
   def evaluate(environment)
-    case condition.evaluate(environment)
+    case condition.evaluate(environment) # x < 3  { x: 1 }
     when Boolean.new(true)
-      evaluate(body.evaluate(environment))
+      evaluate(body.evaluate(environment)) # x = x + 1
     when Boolean.new(false)
-      environment
+      environment # { x : 4 }
     end
   end
 
+  # Denotational semantics approach
   def to_ruby
     "-> e {" +
       " while (#{condition.to_ruby}).call(e); e = (#{body.to_ruby}).call(e); end;" +
@@ -170,3 +175,4 @@ class While < Struct.new(:condition, :body)
   end
 end
 
+# TODO: for loop
