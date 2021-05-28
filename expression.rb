@@ -42,6 +42,10 @@
 #         Reduction pattern:
 #               reduce 'while (condition) { body }' to 
 #                 'if (condition) { body ; while (condition) { body } } else { do-nothing }'
+#
+#   10. Add Big-Step semantics (#evaluate) for each class
+#   11. Add Denotational semantics (#to_ruby) for each class
+#         Using proc (namely proc.call) on an eval (e) function to evaluate within Ruby
 
 class Number < Struct.new(:value)
   def to_s
@@ -58,6 +62,10 @@ class Number < Struct.new(:value)
 
   def evaluate(environment)
     self
+  end
+
+  def to_ruby
+    "-> e { #{value.inspect} }"
   end
 end
 
@@ -87,6 +95,10 @@ class Add < Struct.new(:left, :right)
   def evaluate(environment)
     Number.new(left.evaluate(environment).value + right.evaluate(environment).value)
   end
+
+  def to_ruby
+    "-> e { (#{left.to_ruby}).call(e) + (#{right.to_ruby}).call(e) }"
+  end
 end
 
 class Multiply < Struct.new(:left, :right)
@@ -115,6 +127,10 @@ class Multiply < Struct.new(:left, :right)
   def evaluate
     Number.new(left.evaluate(environment).value * right.evaluate(environment).value)
   end
+
+  def to_ruby
+    "-> e { (#{left.to_ruby}).call(e) * (#{right.to_ruby}).call(e) }"
+  end
 end
 
 class Boolean < Struct.new(:value)
@@ -132,6 +148,10 @@ class Boolean < Struct.new(:value)
 
   def evaluate(environment)
     self
+  end
+
+  def to_ruby
+    "-> e { #{value.inspect} }"
   end
 end
 
@@ -161,6 +181,10 @@ class LessThan < Struct.new(:left, :right)
   def evaluate
     Boolean.new(left.evaluate(environment).value < right.evaluate(environment).value)
   end
+
+  def to_ruby
+    "-> e { (#{left.to_ruby}).call(e) < (#{right.to_ruby}).call(e) }"
+  end
 end
 
 class Variable < Struct.new(:name)
@@ -183,6 +207,10 @@ class Variable < Struct.new(:name)
   def evaluate(environment)
     environment[name]
   end
+
+  def to_ruby
+    "-> e { e[#{name.inspect}] }"
+  end
 end
 
 ## Statements
@@ -202,6 +230,14 @@ class DoNothing
 
   def reducible?
     false
+  end
+
+  def evaluate(environment)
+    environment
+  end
+
+  def to_ruby
+    '-> e { e }'
   end
 end
 
@@ -224,6 +260,14 @@ class Assign < Struct.new(:name, :expression)
     else
       [DoNothing.new, environment.merge({ name => expression })]
     end
+  end
+
+  def evaluate(environment)
+    environment.merge({ name => expression.evaluate(environment) })
+  end
+
+  def to_ruby
+    "-> e { e.merge({ #{name.inspect} => (#{expression.to_ruby}).call(e) }) }"
   end
 end
 
@@ -252,6 +296,22 @@ class If < Struct.new(:condition, :consequence, :alternative)
       end
     end
   end
+
+  def evaluate(environment)
+    case condition.evaluate(environment)
+    when Boolean.new(true)
+      consequence.evaluate(environment)
+    when Boolean.new(false)
+      alternative.evaluate(environment)
+    end
+  end
+
+  def to_ruby
+    "-> e { if (#{condition.to_ruby}).call(e)" +
+      " then (#{consequence.to_ruby}).call(e)" +
+      " else (#{alternative.to_ruby}).call(e)" +
+      " end }"
+  end
 end
 
 class Sequence < Struct.new(:first, :second)
@@ -276,6 +336,14 @@ class Sequence < Struct.new(:first, :second)
       [Sequence.new(reduced_first, second), reduced_environment]
     end
   end
+
+  def evaluate(environment)
+    second.evaluate(first.evaluate(environment))
+  end
+
+  def to_ruby
+    "-> e { (#{second.to_ruby}).call((#{first.to_ruby}).call(e)) }"
+  end
 end
 
 class While < Struct.new(:condition, :body)
@@ -293,6 +361,22 @@ class While < Struct.new(:condition, :body)
 
   def reduce(environment)
     [If.new(condition, Sequence.new(body, self), DoNothing.new), environment]
+  end
+
+  def evaluate(environment)
+    case condition.evaluate(environment)
+    when Boolean.new(true)
+      evaluate(body.evaluate(environment))
+    when Boolean.new(false)
+      environment
+    end
+  end
+
+  def to_ruby
+    "-> e {" +
+      " while (#{condition.to_ruby}).call(e); e = (#{body.to_ruby}).call(e); end;" +
+      " e" +
+      " }"
   end
 end
 
