@@ -9,10 +9,10 @@
 #   2. Methods for reducing expressions
 #     2a. distinguish reducible expressions (Add, Multiply) and not (Number) => #reducible?
 #     2b. implement #reduction on appropriate classes
-#         e.g. for Add, the pattern becomes: 
-#                 reducible lhs => reduce by instantiating new Add; 
-#                 reducible rhs => reduce by instantiating new Add;
-#                 two irreducible => add together
+#                 Add reduction pattern: 
+#                  reducible lhs => reduce by instantiating new Add; 
+#                  reducible rhs => reduce by instantiating new Add;
+#                  two irreducible => add together
 #   3. To maintain state (operation of continuously evaluating expressions) => virtual machine
 #   4. Add simple values (Boolean) and operations (comparison operators)
 #   5. Variables
@@ -23,12 +23,25 @@
 #     6a. so far only state is environment, so statements will produce new environments
 #     6b. Simplest statement => DoNothing (halt)
 #     6c. Assignment statement => Reduce expressions, update environment
-#         e.g. Reduction pattern:
+#         Reduction pattern:
 #                 if expression reducible => reduce expr, environment unchanged
 #                 if can't be reduced => update enviro, halt => [DoNothing, { var => expr }]
 #   7. Conditional statements: if condition (x) then consequence else alternative
-#
-#         
+#         Reduction pattern:
+#                 if condition can be reduced, reduce it => new conditional and unchanged env
+#                 if condition is true => reduce to consequence statement, unchanged env
+#                 if condition is false => reudce to alternative statement, unchanged env
+#         Note: else statements: use an 'if' statement where the alternative is 'do-nothing'
+#   8. Seqeuence statements: connects two statements
+#         Reduction pattern: 
+#                 if first statement is 'do-nothing', reduce to second statement and original env
+#                 if first statement not 'do-nothing', reduce it => new sequence, reduced environment, producing
+#   9. While statement: contains a condition and a body
+#         Unroll one level of the while loop, by reducing it to an 'if' statement that performs a single iteration
+#         Then repeat the original 'while' => check condition, evaluate body, start again
+#         Reduction pattern:
+#               reduce 'while (condition) { body }' to 
+#                 'if (condition) { body ; while (condition) { body } } else { do-nothing }'
 
 class Number < Struct.new(:value)
   def to_s
@@ -41,6 +54,10 @@ class Number < Struct.new(:value)
 
   def reducible?
     false
+  end
+
+  def evaluate(environment)
+    self
   end
 end
 
@@ -66,6 +83,10 @@ class Add < Struct.new(:left, :right)
       Number.new(left.value + right.value)
     end
   end
+
+  def evaluate(environment)
+    Number.new(left.evaluate(environment).value + right.evaluate(environment).value)
+  end
 end
 
 class Multiply < Struct.new(:left, :right)
@@ -90,6 +111,10 @@ class Multiply < Struct.new(:left, :right)
       Number.new(left.value * right.value)
     end
   end
+  
+  def evaluate
+    Number.new(left.evaluate(environment).value * right.evaluate(environment).value)
+  end
 end
 
 class Boolean < Struct.new(:value)
@@ -103,6 +128,10 @@ class Boolean < Struct.new(:value)
 
   def reducible?
     false
+  end
+
+  def evaluate(environment)
+    self
   end
 end
 
@@ -128,6 +157,10 @@ class LessThan < Struct.new(:left, :right)
       Boolean.new(left.value < right.value)
     end
   end
+
+  def evaluate
+    Boolean.new(left.evaluate(environment).value < right.evaluate(environment).value)
+  end
 end
 
 class Variable < Struct.new(:name)
@@ -146,7 +179,13 @@ class Variable < Struct.new(:name)
   def reduce(environment)
     environment[name]
   end
+
+  def evaluate(environment)
+    environment[name]
+  end
 end
+
+## Statements
 
 class DoNothing
   def to_s
@@ -185,6 +224,75 @@ class Assign < Struct.new(:name, :expression)
     else
       [DoNothing.new, environment.merge({ name => expression })]
     end
+  end
+end
+
+class If < Struct.new(:condition, :consequence, :alternative)
+  def to_s
+    "if (#{condition}) { #{consequence} } else { #{alternative} }"
+  end
+
+  def inspect 
+    "#{self}"
+  end
+
+  def reducible?
+    true
+  end
+
+  def reduce(environment)
+    if condition.reducible?
+      [If.new(condition.reduce(environment), consequence, alternative), environment]
+    else
+      case condition
+      when Boolean.new(true)
+        [consequence, environment]
+      when Boolean.new(false)
+        [alternative, environment]
+      end
+    end
+  end
+end
+
+class Sequence < Struct.new(:first, :second)
+  def to_s
+    "#{first}; #{second}"
+  end
+
+  def inspect
+    "#{self}"
+  end
+
+  def reducible?
+    true
+  end
+
+  def reduce(environment)
+    case first
+    when DoNothing.new
+      [second, environment]
+    else
+      reduced_first, reduced_environment = first.reduce(environment)
+      [Sequence.new(reduced_first, second), reduced_environment]
+    end
+  end
+end
+
+class While < Struct.new(:condition, :body)
+  def to_s
+    "while (#{condition}) { #{body} }"
+  end
+
+  def inspect
+    "#{self}"
+  end
+
+  def reducible?
+    true
+  end
+
+  def reduce(environment)
+    [If.new(condition, Sequence.new(body, self), DoNothing.new), environment]
   end
 end
 
